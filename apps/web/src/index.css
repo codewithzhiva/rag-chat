@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+@theme {
+  /* Design System — Dark OLED */
+  --color-bg: #0F172A;
+  --color-surface: #1E293B;
+  --color-surface-2: #334155;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-text: #F8FAFC;
+  --color-muted: #94A3B8;
+  --color-accent: #22C55E;
+  --color-accent-dim: rgba(34, 197, 94, 0.12);
+  --color-danger: #EF4444;
+
+  /* Typography */
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #0F172A;
+  color: #F8FAFC;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+/* Streaming cursor blink */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.streaming-cursor::after {
+  content: '▋';
+  color: #22C55E;
+  animation: blink 1s step-end infinite;
+  margin-left: 1px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Smooth skeleton pulse */
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+.skeleton {
+  animation: pulse-subtle 1.5s ease-in-out infinite;
+}
