@@ -1,7 +1,6 @@
 import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
-import { buildSystemPrompt, embed, streamChat } from '../services/ollama.js'
-import { searchChunks } from '../services/qdrant.js'
+import { runAgenticRag } from '../services/agentic-rag.js'
 
 export const chatRoute = new Hono()
 
@@ -13,45 +12,58 @@ chatRoute.post('/stream', async (c) => {
   }
 
   return streamSSE(c, async (stream) => {
-    // 1. Embed user query
-    const queryEmbedding = await embed(message)
+    try {
+      // Signal that retrieval is starting
+      await stream.writeSSE({
+        data: JSON.stringify({ type: 'status', content: 'Retrieving relevant documents…' }),
+      })
 
-    // 2. Retrieve relevant chunks from Qdrant
-    const sources = await searchChunks(queryEmbedding, 5)
+      const { answer, relevantChunks, loopCount } = await runAgenticRag(message)
 
-    if (sources.length === 0) {
+      if (relevantChunks.length === 0) {
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: 'error',
+            content: 'No relevant documents found. Upload some documents first.',
+          }),
+        })
+        return
+      }
+
+      // Emit retrieval metadata so UI can show how many loops were needed
+      if (loopCount > 1) {
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: 'status',
+            content: `Retrieved after ${loopCount} retrieval ${loopCount === 1 ? 'pass' : 'passes'}`,
+          }),
+        })
+      }
+
+      // Stream answer token by token (split on spaces for basic streaming effect)
+      const words = answer.split(' ')
+      for (let i = 0; i < words.length; i++) {
+        const token = (i === 0 ? '' : ' ') + words[i]
+        await stream.writeSSE({ data: JSON.stringify({ type: 'token', content: token }) })
+      }
+
+      // Send source citations
       await stream.writeSSE({
         data: JSON.stringify({
-          type: 'error',
-          content: 'No relevant documents found. Upload some documents first.',
+          type: 'sources',
+          sources: relevantChunks.map(({ filename, chunkIndex, text }) => ({
+            filename,
+            chunkIndex,
+            excerpt: text.slice(0, 200) + (text.length > 200 ? '…' : ''),
+          })),
+          loopCount,
         }),
       })
-      return
+
+      await stream.writeSSE({ data: JSON.stringify({ type: 'done' }) })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      await stream.writeSSE({ data: JSON.stringify({ type: 'error', content: message }) })
     }
-
-    // 3. Build system prompt with retrieved context
-    const systemPrompt = buildSystemPrompt(sources.map((s) => s.text))
-
-    // 4. Stream LLM response token by token
-    for await (const token of streamChat(systemPrompt, message)) {
-      await stream.writeSSE({
-        data: JSON.stringify({ type: 'token', content: token }),
-      })
-    }
-
-    // 5. Send source metadata so UI can show citations
-    await stream.writeSSE({
-      data: JSON.stringify({
-        type: 'sources',
-        sources: sources.map(({ filename, chunkIndex, text }) => ({
-          filename,
-          chunkIndex,
-          excerpt: text.slice(0, 200) + (text.length > 200 ? '…' : ''),
-        })),
-      }),
-    })
-
-    // 6. Signal completion
-    await stream.writeSSE({ data: JSON.stringify({ type: 'done' }) })
   })
 })
